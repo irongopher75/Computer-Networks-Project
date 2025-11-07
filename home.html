@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Error Detection Tools</title>
+    <style>
+        :root { --bg:#0f172a; --border:#1f2937; --text:#e5e7eb; --muted:#94a3b8; }
+        body{margin:0;background:#0f172a;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+        .container{max-width:880px;margin:24px auto;padding:0 16px}
+        .card{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:18px}
+        h1{margin:0 0 6px}
+        .subtitle{color:var(--muted);margin-bottom:16px}
+        .row{display:grid;grid-template-columns:1fr;gap:14px}
+        @media(min-width:720px){.row{grid-template-columns:1fr 1fr}}
+        .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+        button{border:1px solid var(--border);background:#16a34a;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+        a{text-decoration:none}
+    </style>
+    <link rel="icon" href="/favicon.ico">
+    <meta name="description" content="CRC and Hamming tools" />
+    <meta name="theme-color" content="#111827" />
+    </head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Error Detection Tools</h1>
+            <div class="subtitle">Choose a tool to continue.</div>
+            <div class="row">
+                <div class="card" style="padding:16px;">
+                    <h1 style="font-size:22px; margin-bottom:6px;">CRC Checker</h1>
+                    <div class="subtitle">Generate CRC and verify frames via syndrome.</div>
+                    <div class="btns"><a href="/crc"><button>Open CRC</button></a></div>
+                </div>
+                <div class="card" style="padding:16px;">
+                    <h1 style="font-size:22px; margin-bottom:6px;">Hamming Checker</h1>
+                    <div class="subtitle">Encode, detect position, auto-correct single-bit errors.</div>
+                    <div class="btns"><a href="/hamming"><button>Open Hamming</button></a></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+
+

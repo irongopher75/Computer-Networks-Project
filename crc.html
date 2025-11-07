@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CRC Checker</title>
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        :root { --bg:#0f172a; --border:#1f2937; --text:#e5e7eb; --muted:#94a3b8; }
+        body{margin:0;background:#0f172a;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+        .container{max-width:880px;margin:24px auto;padding:0 16px}
+        .card{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:18px}
+        h1{margin:0 0 6px}
+        .subtitle{color:var(--muted);margin-bottom:16px}
+        label{display:block;margin:12px 0 6px;font-weight:600}
+        input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#0a0f1c;color:var(--text)}
+        .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+        button{border:1px solid var(--border);background:#101827;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+        button.primary{background:#16a34a;border-color:#16a34a}
+        .output{margin-top:14px;padding:12px;background:#0a0f1c;border:1px solid var(--border);border-radius:10px;word-break:break-all}
+        .status{margin-top:8px;font-weight:700}
+        .ok{color:#22c55e}.bad{color:#f43f5e}
+        .row{display:grid;grid-template-columns:1fr;gap:14px}
+        @media(min-width:720px){.row{grid-template-columns:1fr 1fr}}
+        .mono{font-family:ui-monospace,Menlo,Monaco,Consolas,"Courier New",monospace}
+        .nav{margin-bottom:16px}
+        a{color:#93c5fd;text-decoration:none}
+        .list{margin-top:10px}
+        .list-item{font-size:12px;color:var(--muted)}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav"><a href="/">← Back</a> · <a href="/hamming">Hamming</a></div>
+        <div class="card">
+            <h1>CRC Checker</h1>
+            <div class="subtitle">Generate CRC codeword and verify received frames (syndrome).</div>
+            <div class="row">
+                <div>
+                    <label for="data">Binary Data</label>
+                    <input id="data" type="text" inputmode="numeric" placeholder="e.g. 1101011011" autocomplete="off">
+                    <div class="btns">
+                        <button id="btn-random" class="secondary">Random data</button>
+                    </div>
+                </div>
+                <div>
+                    <label for="generator">Generator (key)</label>
+                    <input id="generator" type="text" inputmode="numeric" placeholder="e.g. 10011" autocomplete="off">
+                    <div class="btns">
+                        <select id="crc-preset" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:#0a0f1c;color:var(--text)">
+                            <option value="">Select a preset…</option>
+                            <option value="10011">Example (10011)</option>
+                            <option value="100000111">CRC-8 (0x07)</option>
+                            <option value="11000000000000101">CRC-16/IBM (0x8005)</option>
+                            <option value="100000100110000010001110110110111">CRC-32/IEEE (0x04C11DB7)</option>
+                        </select>
+                        <button id="btn-preset" class="secondary">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <div class="btns">
+                <button id="btn-generate" class="primary">Compute CRC & Codeword</button>
+                <button id="btn-clear" class="secondary">Clear</button>
+            </div>
+            <div id="gen-output" class="output" hidden>
+                <div><strong>Appended</strong>: <span class="mono" id="appended"></span></div>
+                <div><strong>Remainder</strong>: <span class="mono" id="remainder"></span></div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <div><strong>Codeword</strong>: <span class="mono" id="codeword"></span></div>
+                    <button id="btn-copy-codeword" class="secondary">Copy</button>
+                    <button id="btn-crc-flip" class="secondary">Flip last bit & Check</button>
+                    <button id="btn-export" class="secondary">Download JSON</button>
+                </div>
+            </div>
+
+            <label for="received" style="margin-top:12px">Received Codeword</label>
+            <input id="received" type="text" inputmode="numeric" placeholder="paste/transmitted codeword or introduce error" autocomplete="off">
+            <div class="btns">
+                <button id="btn-check" class="secondary">Check Received</button>
+            </div>
+            <div id="check-output" class="output" hidden>
+                <div><strong>Syndrome</strong>: <span class="mono" id="syndrome"></span></div>
+                <div id="status" class="status"></div>
+            </div>
+
+            <div class="list" id="history"></div>
+        </div>
+    </div>
+
+    <script>
+        function sanitizeBits(i){return (i||'').trim()}
+        function isBits(i){return /^[01]+$/.test(i)}
+        function xorStrings(a,b){const r=[];for(let i=1;i<b.length;i++){r.push(a[i]===b[i]?'0':'1')}return r.join('')}
+        function mod2Divide(dividend,divisor){const pickLen=divisor.length;let pick=pickLen;let tmp=dividend.slice(0,pick);while(pick<dividend.length){if(tmp[0]==='1'){tmp=xorStrings(divisor,tmp)+dividend[pick]}else{tmp=xorStrings('0'.repeat(pickLen),tmp)+dividend[pick]}pick+=1}if(tmp[0]==='1'){tmp=xorStrings(divisor,tmp)}else{tmp=xorStrings('0'.repeat(pickLen),tmp)}return tmp}
+        function encodeData(data,key){const appended=data+'0'.repeat(key.length-1);const remainder=mod2Divide(appended,key);const codeword=data+remainder;return {appended,remainder,codeword}}
+        async function apiEncode(data,key){try{const r=await fetch('/api/encode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:key?data:'' ,key})});if(!r.ok)throw new Error('bad');return await r.json()}catch(_){return encodeData(data,key)}}
+        async function apiCheck(received,key){try{const r=await fetch('/api/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received,key})});if(!r.ok)throw new Error('bad');const {syndrome,ok}=await r.json();return {syndrome,ok}}catch(_){const syn=mod2Divide(received,key);return {syndrome:syn,ok:!syn.includes('1')}}}
+
+        const dataEl=document.getElementById('data');
+        const keyEl=document.getElementById('generator');
+        const receivedEl=document.getElementById('received');
+        const appendedEl=document.getElementById('appended');
+        const remainderEl=document.getElementById('remainder');
+        const codewordEl=document.getElementById('codeword');
+        const genOut=document.getElementById('gen-output');
+        const checkOut=document.getElementById('check-output');
+        const syndromeEl=document.getElementById('syndrome');
+        const statusEl=document.getElementById('status');
+        const historyEl=document.getElementById('history');
+
+        function show(el){el.hidden=false}function hide(el){el.hidden=true}
+        function setStatus(el,ok,text){el.textContent=text;el.className='status '+(ok?'ok':'bad')}
+        async function copyText(t){try{await navigator.clipboard.writeText(t)}catch(_){}}
+        function pushHistory(entry){const div=document.createElement('div');div.className='list-item';div.textContent=`${new Date().toLocaleTimeString()} • ${entry}`;historyEl.prepend(div);while(historyEl.children.length>5){historyEl.removeChild(historyEl.lastChild)}}
+        function download(name, data){const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data,null,2));a.download=name;document.body.appendChild(a);a.click();a.remove()}
+
+        document.getElementById('btn-preset').addEventListener('click',()=>{const preset=document.getElementById('crc-preset').value;if(preset) keyEl.value=preset})
+        document.getElementById('btn-random').addEventListener('click',()=>{const len=8+Math.floor(Math.random()*9);let s='';for(let i=0;i<len;i++){s+=Math.random()<0.5?'0':'1'}dataEl.value=s})
+        document.getElementById('btn-clear').addEventListener('click',()=>{dataEl.value='';keyEl.value='';receivedEl.value='';hide(genOut);hide(checkOut)})
+
+        document.getElementById('btn-generate').addEventListener('click', async ()=>{
+            const data=sanitizeBits(dataEl.value);const key=sanitizeBits(keyEl.value);
+            if(!isBits(data)||!isBits(key)||key[0]!=='1'){hide(genOut);hide(checkOut);setStatus(statusEl,false,'Enter valid data and generator (must start with 1).');show(checkOut);syndromeEl.textContent='';return}
+            const {appended,remainder,codeword}=await apiEncode(data,key);
+            appendedEl.textContent=appended;remainderEl.textContent=remainder;codewordEl.textContent=codeword;show(genOut);
+            pushHistory(`Generated codeword len=${codeword.length}`);
+        })
+
+        document.getElementById('btn-check').addEventListener('click', async ()=>{
+            const key=sanitizeBits(keyEl.value);const received=sanitizeBits(receivedEl.value);
+            if(!isBits(key)||key[0]!=='1'||!isBits(received)){hide(checkOut);setStatus(statusEl,false,'Provide valid generator and received codeword.');show(checkOut);syndromeEl.textContent='';return}
+            const {syndrome,ok}=await apiCheck(received,key);syndromeEl.textContent=syndrome;setStatus(statusEl,ok, ok?'No error detected (CRC).':'Error detected (CRC).');show(checkOut);
+            pushHistory(`Checked received: ${ok?'OK':'ERROR'}`);
+        })
+
+        document.getElementById('btn-copy-codeword').addEventListener('click',()=>{const t=codewordEl.textContent||'';if(t) copyText(t)})
+        document.getElementById('btn-crc-flip').addEventListener('click', async ()=>{const cw=codewordEl.textContent||'';const key=sanitizeBits(keyEl.value);if(!cw||!isBits(key))return;const flipped=cw.slice(0,-1)+(cw.endsWith('0')?'1':'0');receivedEl.value=flipped;const {syndrome,ok}=await apiCheck(flipped,key);syndromeEl.textContent=syndrome;setStatus(statusEl,ok, ok?'No error detected (CRC).':'Error detected (CRC).');show(checkOut);pushHistory('Flipped last bit and checked')})
+        document.getElementById('btn-export').addEventListener('click',()=>{const data={data:dataEl.value,key:keyEl.value,appended:appendedEl.textContent,remainder:remainderEl.textContent,codeword:codewordEl.textContent,timestamp:new Date().toISOString()};download('crc_result.json',data)})
+    </script>
+</body>
+</html>
+
+
+
+

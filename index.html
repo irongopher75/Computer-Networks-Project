@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CRC Code Checker</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #111827;
+            --muted: #94a3b8;
+            --text: #e5e7eb;
+            --accent: #22c55e;
+            --error: #f43f5e;
+            --border: #1f2937;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: radial-gradient(1200px 800px at 80% -200px, #1f2937 0%, var(--bg) 60%);
+            color: var(--text);
+        }
+        .container {
+            max-width: 880px;
+            margin: 32px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.0));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        }
+        h1 {
+            font-size: 28px;
+            margin: 0 0 4px;
+            letter-spacing: 0.3px;
+        }
+        .subtitle { color: var(--muted); margin-bottom: 24px; }
+        label { display: block; font-weight: 600; margin: 14px 0 8px; }
+        .help { color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 6px; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: #0b1220;
+            color: var(--text);
+            outline: none;
+        }
+        input[type="text"]:focus { border-color: #334155; box-shadow: 0 0 0 4px rgba(59,130,246,0.15); }
+        .row { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        @media (min-width: 720px) { .row { grid-template-columns: 1fr 1fr; } }
+        .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+        button {
+            appearance: none;
+            border: 1px solid var(--border);
+            background: #101827;
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button.primary { background: #16a34a; border-color: #16a34a; }
+        button.primary:hover { background: #22c55e; }
+        button.secondary:hover { background: #0b1220; }
+        .output {
+            margin-top: 18px;
+            padding: 14px;
+            background: #0b1220;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            word-break: break-all;
+        }
+        .status { margin-top: 10px; font-weight: 700; }
+        .ok { color: var(--accent); }
+        .bad { color: var(--error); }
+        .footer { color: var(--muted); font-size: 12px; margin-top: 16px; text-align: center; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .sep { height: 1px; width: 100%; background: var(--border); margin: 18px 0; }
+    </style>
+    <meta name="description" content="Simple CRC (Cyclic Redundancy Check) codeword generator and checker." />
+    <meta name="theme-color" content="#111827" />
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>CRC Code Checker</h1>
+            <div class="subtitle">Generate codeword and verify received frames using modulo-2 division.</div>
+
+            <div class="row">
+                <div>
+                    <label for="data">Binary Data</label>
+                    <input id="data" type="text" inputmode="numeric" placeholder="e.g. 1101011011" autocomplete="off">
+                    <div class="help">Only 0/1 characters are allowed.</div>
+                </div>
+                <div>
+                    <label for="generator">Generator Polynomial (key)</label>
+                    <input id="generator" type="text" inputmode="numeric" placeholder="e.g. 10011" autocomplete="off">
+                    <div class="help">Binary form of divisor polynomial (e.g., x^4 + 1 → 10001).</div>
+                    <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <select id="crc-preset" style="flex:1; padding:10px; border-radius:10px; border:1px solid var(--border); background:#0b1220; color:var(--text);">
+                            <option value="">Select a preset…</option>
+                            <option value="100000111">CRC-8 (x^8+x^2+x+1 → 0x07)</option>
+                            <option value="11000000000000101">CRC-16/IBM (0x8005)</option>
+                            <option value="100000100110000010001110110110111">CRC-32/IEEE (0x04C11DB7)</option>
+                            <option value="10011">Example (from tip: 10011)</option>
+                        </select>
+                        <button id="btn-preset" class="secondary">Apply preset</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btns">
+                <button id="btn-generate" class="primary">Compute CRC & Codeword</button>
+                <button id="btn-clear" class="secondary" title="Clear all fields">Clear</button>
+            </div>
+
+            <div id="gen-output" class="output" hidden>
+                <div><strong>Appended data</strong>: <span class="mono" id="appended"></span></div>
+                <div><strong>Remainder (CRC)</strong>: <span class="mono" id="remainder"></span></div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <div><strong>Codeword</strong>: <span class="mono" id="codeword"></span></div>
+                    <button id="btn-copy-codeword" class="secondary" title="Copy codeword">Copy</button>
+                    <button id="btn-crc-flip" class="secondary" title="Introduce 1-bit error (last bit)">Flip last bit & Check</button>
+                </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <label for="received">Received Codeword</label>
+            <input id="received" type="text" inputmode="numeric" placeholder="paste/transmitted codeword or introduce error" autocomplete="off">
+            <div class="btns">
+                <button id="btn-check" class="secondary">Check Received</button>
+            </div>
+            <div id="check-output" class="output" hidden>
+                <div><strong>Syndrome</strong>: <span class="mono" id="syndrome"></span></div>
+                <div id="status" class="status"></div>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top:16px;">
+            <h1>Hamming Code Checker</h1>
+            <div class="subtitle">Encode data with parity bits and detect/correct a single-bit error.</div>
+
+            <label for="ham-data">Binary Data</label>
+            <input id="ham-data" type="text" inputmode="numeric" placeholder="e.g. 1011001" autocomplete="off">
+            <div class="btns">
+                <button id="btn-ham-encode" class="primary">Encode (Add Parity)</button>
+            </div>
+            <div id="ham-enc-output" class="output" hidden>
+                <div><strong>Parity bits (r)</strong>: <span class="mono" id="ham-r"></span></div>
+                <div><strong>Hamming Codeword</strong>: <span class="mono" id="ham-code"></span></div>
+            </div>
+
+            <div class="sep"></div>
+
+            <label for="ham-received">Received Hamming Codeword</label>
+            <input id="ham-received" type="text" inputmode="numeric" placeholder="paste codeword or introduce an error" autocomplete="off">
+            <div class="btns">
+                <button id="btn-ham-check" class="secondary">Check & Auto-correct</button>
+            </div>
+            <div id="ham-check-output" class="output" hidden>
+                <div><strong>Error position</strong>: <span class="mono" id="ham-pos"></span></div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <div><strong>Corrected</strong>: <span class="mono" id="ham-corrected"></span></div>
+                    <button id="btn-copy-ham-corrected" class="secondary" title="Copy corrected codeword">Copy</button>
+                    <button id="btn-ham-flip" class="secondary" title="Introduce 1-bit error (last bit)">Flip last bit & Check</button>
+                </div>
+                <div id="ham-status" class="status"></div>
+            </div>
+        </div>
+
+        <div class="footer">Tip: CRC data <span class="mono">1101011011</span> with generator <span class="mono">10011</span>.</div>
+    </div>
+
+    <script>
+        function sanitizeBits(input) {
+            return (input || "").trim();
+        }
+
+        function isBits(input) {
+            return /^[01]+$/.test(input);
+        }
+
+        function xorStrings(a, b) {
+            const result = [];
+            for (let i = 1; i < b.length; i++) {
+                result.push(a[i] === b[i] ? '0' : '1');
+            }
+            return result.join('');
+        }
+
+        function mod2Divide(dividend, divisor) {
+            const pickLen = divisor.length;
+            let pick = pickLen;
+            let tmp = dividend.slice(0, pick);
+            while (pick < dividend.length) {
+                if (tmp[0] === '1') {
+                    tmp = xorStrings(divisor, tmp) + dividend[pick];
+                } else {
+                    tmp = xorStrings('0'.repeat(pickLen), tmp) + dividend[pick];
+                }
+                pick += 1;
+            }
+            if (tmp[0] === '1') {
+                tmp = xorStrings(divisor, tmp);
+            } else {
+                tmp = xorStrings('0'.repeat(pickLen), tmp);
+            }
+            return tmp;
+        }
+
+        function encodeData(data, key) {
+            const appended = data + '0'.repeat(key.length - 1);
+            const remainder = mod2Divide(appended, key);
+            const codeword = data + remainder;
+            return { appended, remainder, codeword };
+        }
+
+        async function apiEncode(data, key) {
+            try {
+                const res = await fetch('/api/encode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data, key })
+                });
+                if (!res.ok) throw new Error('bad status');
+                return await res.json();
+            } catch (_) {
+                return encodeData(data, key);
+            }
+        }
+
+        async function apiCheck(received, key) {
+            try {
+                const res = await fetch('/api/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ received, key })
+                });
+                if (!res.ok) throw new Error('bad status');
+                const { syndrome, ok } = await res.json();
+                return { syndrome, ok };
+            } catch (_) {
+                const syn = mod2Divide(received, key);
+                return { syndrome: syn, ok: !syn.includes('1') };
+            }
+        }
+
+        // -------- Hamming (frontend fallback) --------
+        function calcParityBitsLen(m) {
+            let r = 0;
+            while ((2 ** r) < (m + r + 1)) r++;
+            return r;
+        }
+        function placeRedundantBits(data, r) {
+            let j = 0, k = 1, m = data.length, res = '';
+            for (let i = 1; i <= m + r; i++) {
+                if (i === (2 ** j)) { res += '0'; j++; }
+                else { res += data[data.length - k]; k++; }
+            }
+            return res.split('').reverse().join('');
+        }
+        function calcParityValues(arr, r) {
+            const n = arr.length; const a = arr.split('');
+            for (let i = 0; i < r; i++) {
+                let val = 0;
+                for (let j = 1; j <= n; j++) {
+                    if ((j & (2 ** i)) === (2 ** i)) val ^= Number(a[n - j]);
+                }
+                a[n - (2 ** i)] = String(val);
+            }
+            return a.join('');
+        }
+        function detectHammingError(arr, r) {
+            const n = arr.length; let res = 0;
+            for (let i = 0; i < r; i++) {
+                let val = 0;
+                for (let j = 1; j <= n; j++) {
+                    if ((j & (2 ** i)) === (2 ** i)) val ^= Number(arr[n - j]);
+                }
+                res += val * (2 ** i);
+            }
+            return res;
+        }
+        async function apiHamEncode(data) {
+            try {
+                const r = await fetch('/api/hamming/encode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }) });
+                if (!r.ok) throw new Error('bad');
+                return await r.json();
+            } catch (_) {
+                const m = data.length; const r = calcParityBitsLen(m);
+                const arr = placeRedundantBits(data, r);
+                const codeword = calcParityValues(arr, r);
+                return { r, codeword };
+            }
+        }
+        async function apiHamCheck(received, r) {
+            try {
+                const resp = await fetch('/api/hamming/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ received, r }) });
+                if (!resp.ok) throw new Error('bad');
+                return await resp.json();
+            } catch (_) {
+                const pos = detectHammingError(received, r);
+                let corrected = null;
+                if (pos > 0 && pos <= received.length) {
+                    const idx = received.length - pos;
+                    const rl = received.split('');
+                    rl[idx] = rl[idx] === '0' ? '1' : '0';
+                    corrected = rl.join('');
+                }
+                return { ok: pos === 0, error_position: pos, corrected };
+            }
+        }
+
+        function show(el) { el.hidden = false; }
+        function hide(el) { el.hidden = true; }
+        function setStatus(el, ok, text) {
+            el.textContent = text;
+            el.className = 'status ' + (ok ? 'ok' : 'bad');
+        }
+        async function copyText(text) {
+            try { await navigator.clipboard.writeText(text); } catch (_) {}
+        }
+
+        const dataEl = document.getElementById('data');
+        const keyEl = document.getElementById('generator');
+        const receivedEl = document.getElementById('received');
+        const genOut = document.getElementById('gen-output');
+        const appendedEl = document.getElementById('appended');
+        const remainderEl = document.getElementById('remainder');
+        const codewordEl = document.getElementById('codeword');
+        const checkOut = document.getElementById('check-output');
+        const syndromeEl = document.getElementById('syndrome');
+        const statusEl = document.getElementById('status');
+        const presetEl = document.getElementById('crc-preset');
+        const hamDataEl = document.getElementById('ham-data');
+        const hamR = document.getElementById('ham-r');
+        const hamCode = document.getElementById('ham-code');
+        const hamEncOut = document.getElementById('ham-enc-output');
+        const hamReceivedEl = document.getElementById('ham-received');
+        const hamCheckOut = document.getElementById('ham-check-output');
+        const hamPos = document.getElementById('ham-pos');
+        const hamCorrected = document.getElementById('ham-corrected');
+        const hamStatus = document.getElementById('ham-status');
+
+        document.getElementById('btn-generate').addEventListener('click', async () => {
+            const data = sanitizeBits(dataEl.value);
+            const key = sanitizeBits(keyEl.value);
+
+            if (!isBits(data) || !isBits(key) || key[0] !== '1') {
+                hide(genOut); hide(checkOut);
+                setStatus(statusEl, false, 'Please enter valid binary data and a valid generator (must start with 1).');
+                show(checkOut);
+                syndromeEl.textContent = '';
+                return;
+            }
+
+            const { appended, remainder, codeword } = await apiEncode(data, key);
+            appendedEl.textContent = appended;
+            remainderEl.textContent = remainder;
+            codewordEl.textContent = codeword;
+            show(genOut);
+        });
+
+        document.getElementById('btn-preset').addEventListener('click', () => {
+            if (presetEl.value) {
+                keyEl.value = presetEl.value;
+            }
+        });
+
+        document.getElementById('btn-check').addEventListener('click', async () => {
+            const key = sanitizeBits(keyEl.value);
+            const received = sanitizeBits(receivedEl.value);
+            if (!isBits(key) || key[0] !== '1' || !isBits(received)) {
+                hide(checkOut);
+                setStatus(statusEl, false, 'Please provide a valid generator and received codeword (binary).');
+                show(checkOut);
+                syndromeEl.textContent = '';
+                return;
+            }
+            const { syndrome, ok } = await apiCheck(received, key);
+            syndromeEl.textContent = syndrome;
+            if (ok) {
+                setStatus(statusEl, true, 'No error detected (CRC).');
+            } else {
+                setStatus(statusEl, false, 'Error detected in received message (CRC).');
+            }
+            show(checkOut);
+        });
+
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            dataEl.value = '';
+            keyEl.value = '';
+            receivedEl.value = '';
+            hide(genOut); hide(checkOut);
+        });
+
+        document.getElementById('btn-copy-codeword').addEventListener('click', () => {
+            const text = codewordEl.textContent || '';
+            if (text) copyText(text);
+        });
+
+        document.getElementById('btn-crc-flip').addEventListener('click', async () => {
+            const cw = codewordEl.textContent || '';
+            const key = sanitizeBits(keyEl.value);
+            if (!cw || !isBits(key)) return;
+            const flipped = cw.slice(0, -1) + (cw.endsWith('0') ? '1' : '0');
+            receivedEl.value = flipped;
+            // trigger check
+            const { syndrome, ok } = await apiCheck(flipped, key);
+            syndromeEl.textContent = syndrome;
+            setStatus(statusEl, ok, ok ? 'No error detected (CRC).' : 'Error detected in received message (CRC).');
+            show(checkOut);
+        });
+
+        document.getElementById('btn-ham-encode').addEventListener('click', async () => {
+            const data = sanitizeBits(hamDataEl.value);
+            if (!isBits(data)) {
+                hide(hamEncOut); hide(hamCheckOut);
+                hamStatus.textContent = 'Please enter valid binary data.';
+                hamStatus.className = 'status bad';
+                show(hamCheckOut);
+                return;
+            }
+            const { r, codeword } = await apiHamEncode(data);
+            hamR.textContent = r;
+            hamCode.textContent = codeword;
+            show(hamEncOut);
+        });
+
+        document.getElementById('btn-ham-check').addEventListener('click', async () => {
+            const received = sanitizeBits(hamReceivedEl.value);
+            const rVal = Number(hamR.textContent || '0');
+            if (!isBits(received) || !(rVal >= 0)) {
+                hide(hamCheckOut);
+                hamStatus.textContent = 'Please encode first and provide a valid received codeword.';
+                hamStatus.className = 'status bad';
+                show(hamCheckOut);
+                return;
+            }
+            const result = await apiHamCheck(received, rVal);
+            hamPos.textContent = result.error_position;
+            hamCorrected.textContent = result.corrected || '(n/a)';
+            hamStatus.textContent = result.ok ? 'No error detected (Hamming).' : 'Error detected (Hamming).';
+            hamStatus.className = 'status ' + (result.ok ? 'ok' : 'bad');
+            show(hamCheckOut);
+        });
+
+        document.getElementById('btn-copy-ham-corrected').addEventListener('click', () => {
+            const text = document.getElementById('ham-corrected').textContent || '';
+            if (text && text !== '(n/a)') copyText(text);
+        });
+
+        document.getElementById('btn-ham-flip').addEventListener('click', async () => {
+            const code = hamCode.textContent || '';
+            const rVal = Number(hamR.textContent || '0');
+            if (!code || !(rVal >= 0)) return;
+            const flipped = code.slice(0, -1) + (code.endsWith('0') ? '1' : '0');
+            hamReceivedEl.value = flipped;
+            const result = await apiHamCheck(flipped, rVal);
+            hamPos.textContent = result.error_position;
+            hamCorrected.textContent = result.corrected || '(n/a)';
+            hamStatus.textContent = result.ok ? 'No error detected (Hamming).' : 'Error detected (Hamming).';
+            hamStatus.className = 'status ' + (result.ok ? 'ok' : 'bad');
+            show(hamCheckOut);
+        });
+    </script>
+    <!--
+        Usage:
+        - Open this file directly in a browser.
+        - Enter binary data and generator to compute codeword.
+        - Paste a received codeword to check for errors via syndrome.
+    -->
+</body>
+// ... more code ...
+</html>
+
+

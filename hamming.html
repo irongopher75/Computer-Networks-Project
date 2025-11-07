@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hamming Checker</title>
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        :root { --bg:#0f172a; --border:#1f2937; --text:#e5e7eb; --muted:#94a3b8; }
+        body{margin:0;background:#0f172a;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto}
+        .container{max-width:880px;margin:24px auto;padding:0 16px}
+        .card{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:18px}
+        h1{margin:0 0 6px}
+        .subtitle{color:var(--muted);margin-bottom:16px}
+        label{display:block;margin:12px 0 6px;font-weight:600}
+        input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#0a0f1c;color:var(--text)}
+        .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+        button{border:1px solid var(--border);background:#101827;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+        button.primary{background:#16a34a;border-color:#16a34a}
+        .output{margin-top:14px;padding:12px;background:#0a0f1c;border:1px solid var(--border);border-radius:10px;word-break:break-all}
+        .status{margin-top:8px;font-weight:700}
+        .ok{color:#22c55e}.bad{color:#f43f5e}
+        .mono{font-family:ui-monospace,Menlo,Monaco,Consolas,"Courier New",monospace}
+        .nav{margin-bottom:16px}
+        a{color:#93c5fd;text-decoration:none}
+        .list{margin-top:10px}
+        .list-item{font-size:12px;color:var(--muted)}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav"><a href="/">← Back</a> · <a href="/crc">CRC</a></div>
+        <div class="card">
+            <h1>Hamming Checker</h1>
+            <div class="subtitle">Encode with parity bits (SEC), detect error position, and auto-correct.</div>
+
+            <label for="ham-data">Binary Data</label>
+            <input id="ham-data" type="text" inputmode="numeric" placeholder="e.g. 1011001" autocomplete="off">
+            <div class="btns">
+                <button id="btn-random" class="secondary">Random data</button>
+                <button id="btn-ham-encode" class="primary">Encode (Add Parity)</button>
+            </div>
+            <div id="ham-enc-output" class="output" hidden>
+                <div><strong>Parity bits (r)</strong>: <span class="mono" id="ham-r"></span></div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <div><strong>Hamming Codeword</strong>: <span class="mono" id="ham-code"></span></div>
+                    <button id="btn-copy-ham-code" class="secondary">Copy</button>
+                    <button id="btn-ham-flip" class="secondary">Flip last bit</button>
+                    <button id="btn-export" class="secondary">Download JSON</button>
+                </div>
+            </div>
+
+            <label for="ham-received" style="margin-top:12px">Received Hamming Codeword</label>
+            <input id="ham-received" type="text" inputmode="numeric" placeholder="paste codeword or introduce an error" autocomplete="off">
+            <div class="btns">
+                <button id="btn-ham-check" class="secondary">Check & Auto-correct</button>
+            </div>
+            <div id="ham-check-output" class="output" hidden>
+                <div><strong>Error position</strong>: <span class="mono" id="ham-pos"></span></div>
+                <div><strong>Corrected</strong>: <span class="mono" id="ham-corrected"></span></div>
+                <div id="ham-status" class="status"></div>
+            </div>
+
+            <div class="list" id="history"></div>
+        </div>
+    </div>
+
+    <script>
+        function sanitizeBits(i){return (i||'').trim()}function isBits(i){return /^[01]+$/.test(i)}
+        function calcParityBitsLen(m){let r=0;while((2**r)<(m+r+1))r++;return r}
+        function placeRedundantBits(data,r){let j=0,k=1,m=data.length,res='';for(let i=1;i<=m+r;i++){if(i===(2**j)){res+='0';j++}else{res+=data[data.length-k];k++}}return res.split('').reverse().join('')}
+        function calcParityValues(arr,r){const n=arr.length;const a=arr.split('');for(let i=0;i<r;i++){let v=0;for(let j=1;j<=n;j++){if((j&(2**i))===(2**i))v^=Number(a[n-j])}a[n-(2**i)]=String(v)}return a.join('')}
+        function detectHammingError(arr,r){const n=arr.length;let res=0;for(let i=0;i<r;i++){let v=0;for(let j=1;j<=n;j++){if((j&(2**i))===(2**i))v^=Number(arr[n-j])}res+=v*(2**i)}return res}
+
+        async function apiHamEncode(data){try{const r=await fetch('/api/hamming/encode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data})});if(!r.ok)throw new Error('bad');return await r.json()}catch(_){const m=data.length;const r=calcParityBitsLen(m);const arr=placeRedundantBits(data,r);const codeword=calcParityValues(arr,r);return {r,codeword}}}
+        async function apiHamCheck(received,r){try{const resp=await fetch('/api/hamming/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({received,r})});if(!resp.ok)throw new Error('bad');return await resp.json()}catch(_){const pos=detectHammingError(received,r);let corrected=null;if(pos>0&&pos<=received.length){const idx=received.length-pos;const rl=received.split('');rl[idx]=rl[idx]==='0'?'1':'0';corrected=rl.join('')}return {ok:pos===0,error_position:pos,corrected}}}
+
+        const hamDataEl=document.getElementById('ham-data');
+        const hamR=document.getElementById('ham-r');
+        const hamCode=document.getElementById('ham-code');
+        const hamEncOut=document.getElementById('ham-enc-output');
+        const hamReceivedEl=document.getElementById('ham-received');
+        const hamCheckOut=document.getElementById('ham-check-output');
+        const hamPos=document.getElementById('ham-pos');
+        const hamCorrected=document.getElementById('ham-corrected');
+        const hamStatus=document.getElementById('ham-status');
+        const historyEl=document.getElementById('history');
+
+        function show(el){el.hidden=false}function hide(el){el.hidden=true}
+        function setStatus(el,ok,text){el.textContent=text;el.className='status '+(ok?'ok':'bad')}
+        async function copyText(t){try{await navigator.clipboard.writeText(t)}catch(_){}}
+        function pushHistory(entry){const div=document.createElement('div');div.className='list-item';div.textContent=`${new Date().toLocaleTimeString()} • ${entry}`;historyEl.prepend(div);while(historyEl.children.length>5){historyEl.removeChild(historyEl.lastChild)}}
+        function download(name,data){const a=document.createElement('a');a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(data,null,2));a.download=name;document.body.appendChild(a);a.click();a.remove()}
+
+        document.getElementById('btn-random').addEventListener('click',()=>{const len=5+Math.floor(Math.random()*7);let s='';for(let i=0;i<len;i++){s+=Math.random()<0.5?'0':'1'}hamDataEl.value=s})
+        document.getElementById('btn-ham-encode').addEventListener('click', async ()=>{
+            const data=sanitizeBits(hamDataEl.value);if(!isBits(data)){hide(hamEncOut);hide(hamCheckOut);hamStatus.textContent='Please enter valid binary data.';hamStatus.className='status bad';show(hamCheckOut);return}
+            const {r,codeword}=await apiHamEncode(data);hamR.textContent=r;hamCode.textContent=codeword;show(hamEncOut);pushHistory(`Encoded: r=${r}, len=${codeword.length}`)
+        })
+        document.getElementById('btn-ham-check').addEventListener('click', async ()=>{
+            const received=sanitizeBits(hamReceivedEl.value);const rVal=Number(hamR.textContent||'0');if(!isBits(received)||!(rVal>=0)){hide(hamCheckOut);hamStatus.textContent='Encode first and provide valid received codeword.';hamStatus.className='status bad';show(hamCheckOut);return}
+            const result=await apiHamCheck(received,rVal);hamPos.textContent=result.error_position;hamCorrected.textContent=result.corrected||'(n/a)';hamStatus.textContent=result.ok?'No error detected (Hamming).':'Error detected (Hamming).';hamStatus.className='status '+(result.ok?'ok':'bad');show(hamCheckOut);pushHistory(`Checked received: ${result.ok?'OK':'ERROR'} at ${result.error_position}`)
+        })
+        document.getElementById('btn-copy-ham-code').addEventListener('click',()=>{const t=hamCode.textContent||'';if(t) copyText(t)})
+        document.getElementById('btn-ham-flip').addEventListener('click',()=>{const code=hamCode.textContent||'';if(!code)return;const flipped=code.slice(0,-1)+(code.endsWith('0')?'1':'0');hamReceivedEl.value=flipped;pushHistory('Flipped last bit')})
+        document.getElementById('btn-export').addEventListener('click',()=>{const data={data:hamDataEl.value,r:hamR.textContent,codeword:hamCode.textContent,timestamp:new Date().toISOString()};download('hamming_result.json',data)})
+    </script>
+</body>
+</html>
+
+
+
+
